@@ -168,6 +168,61 @@
   transition: opacity 200ms ease-out;
 }
 
+.hud-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14rpx;
+}
+
+.hud-meta .hud-cloud {
+  margin-top: 0;
+  flex: 1;
+  text-align: left;
+}
+
+.city-picker {
+  flex-shrink: 0;
+  margin-left: 20rpx;
+}
+
+.city-picker-inner {
+  display: flex;
+  align-items: center;
+  padding: 6rpx 18rpx;
+  border: 1rpx solid var(--color-track);
+  border-radius: 999rpx;
+}
+
+.weather-text {
+  font-size: 20rpx;
+  font-weight: 300;
+  letter-spacing: 1rpx;
+  color: var(--color-ink-soft);
+}
+
+/* 取数失败提示：刻意保持比正常天气更轻（虚线边 + 更淡的颜色），
+   传达"这是可选信息"而非"报错了"。整块可点，重试入口。 */
+.weather-error {
+  flex-shrink: 0;
+  margin-left: 20rpx;
+  padding: 6rpx 18rpx;
+  border: 1rpx dashed var(--color-track);
+  border-radius: 999rpx;
+  transition: opacity 120ms ease-out;
+}
+
+.weather-error--hover {
+  opacity: 0.5;
+}
+
+.weather-error-text {
+  font-size: 20rpx;
+  font-weight: 300;
+  letter-spacing: 1rpx;
+  color: var(--color-ink-faint);
+}
+
 .preset-row { display: flex; align-items: center; justify-content: space-between; margin: 8rpx 0 24rpx; }
 .preset-picker { font-size: 30rpx; font-weight: 500; color: var(--color-ink); padding: 6rpx 0; }
 .picker-arrow { padding-left: 14rpx; color: var(--color-accent); }
@@ -180,3 +235,7 @@
 .settings slider { margin: 10rpx -18rpx; }
 .night .caption-main { color: #e4e6ef; }
 .night .caption-slogan, .night .scene-hint { color: #c1c9dc; }
+.night .hud-cloud, .night .weather-text { color: #a8b0c2; }
+.night .city-picker-inner { border-color: rgba(255, 255, 255, 0.22); }
+.night .weather-error { border-color: rgba(255, 255, 255, 0.22); }
+.night .weather-error-text { color: #8891a6; }

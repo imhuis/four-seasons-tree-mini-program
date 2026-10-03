@@ -15,10 +15,14 @@ const TreePresets_1 = require("../../render/TreePresets");
 const GrowthController_1 = require("../../render/GrowthController");
 const EnvironmentController_1 = require("../../render/EnvironmentController");
 const season_sync_1 = require("../../utils/season-sync");
+const weather_1 = require("../../utils/weather");
+const app_events_1 = require("../../utils/app-events");
 /** 文案交叠淡出的时长（毫秒），需与 index.wxss 里的 transition 保持一致。 */
 const CAPTION_FADE_MS = 140;
 /** 浏览进度写入云端的去抖间隔（毫秒）：拖动结束稍作停留再保存。 */
 const CLOUD_SAVE_DEBOUNCE_MS = 2000;
+/** 默认城市在 CITIES 中的下标。派生而非写死，改 CITIES 顺序时不会错位。 */
+const DEFAULT_CITY_INDEX = Math.max(0, weather_1.CITIES.indexOf(weather_1.DEFAULT_CITY));
 Page({
     data: {
         safeTop: 20,
@@ -47,6 +51,10 @@ Page({
         lightValue: 100,
         isNight: false,
         cloudStatusText: '连接云端…',
+        weatherText: '',
+        weatherErrorText: '',
+        cityNames: weather_1.CITIES.map(city => city.name),
+        cityIndex: DEFAULT_CITY_INDEX,
     },
     /** 场景实例。所有动画状态都在这里面，不进 data。 */
     scene: null,
@@ -68,16 +76,31 @@ Page({
     /** 最近一次成功写入云端的进度（去重，避免重复 upsert）。 */
     lastSavedProgress: -1,
     cloudSaveTimer: null,
+    /* --- 内存告警 --- */
+    /** 退订函数，onUnload 必须调用，否则订阅者会随页面实例一起泄漏。 */
+    unsubscribeMemoryWarning: null,
+    /**
+     * 是否正处在内存压力下。
+     *
+     * 必须持久化而不是在回调里直接 stop：告警可能早于场景就绪到达，
+     * 那时没有 scene 可停，只有这个标记能让 setupScene 知道自己不该启动动画。
+     */
+    memoryPressure: false,
     onLoad() {
         const info = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
         this.setData({ safeTop: info.statusBarHeight || 20 });
         this.startCloudSync();
+        this.loadWeather();
+        this.watchMemoryWarning();
     },
     onReady() {
         this.setupScene();
     },
     onShow() {
         this.visible = true;
+        // 回到前台意味着系统又给了内存，解除压力状态。
+        // 不这么做的话，用户每次切回来都会盯着一块静止的画面却无法操作。
+        this.memoryPressure = false;
         // 首次 onShow 时场景还没建好（onReady 在 onShow 之后），这里直接跳过
         const scene = this.scene;
         if (scene !== null)
@@ -100,6 +123,10 @@ Page({
         if (this.captionTimer !== null) {
             clearTimeout(this.captionTimer);
             this.captionTimer = null;
+        }
+        if (this.unsubscribeMemoryWarning !== null) {
+            this.unsubscribeMemoryWarning();
+            this.unsubscribeMemoryWarning = null;
         }
         const scene = this.scene;
         if (scene !== null) {
@@ -131,12 +158,40 @@ Page({
         }
         return null;
     },
+    /**
+     * 兼容版 nextTick：在下一个渲染批次执行回调。
+     *
+     * 与 selectorQuery 同样的兼容思路——WorkBuddy 预览面板的模拟器只实现了
+     * 部分 wx API，没有 nextTick，直接调用会抛 "wx.nextTick is not a function"
+     * 并中断 onReady / setData 回调（场景根本起不来）。
+     * 缺省时退化为 setTimeout(0)：语义上仍是"异步延后一拍"，
+     * 对测量画布尺寸这类只要求"等 DOM 更新完"的操作完全够用。
+     */
+    /**
+     * 兼容版 showToast。
+     *
+     * 预览面板等模拟器不一定实现 wx.showToast，缺方法时直接调用会抛错并
+     * 中断当前流程（这里是失败提示路径，抛错反而会盖掉真正的失败原因）。
+     * 提示只是锦上添花，缺失时静默跳过即可。
+     */
+    toast(title) {
+        if (typeof wx === 'undefined' || typeof wx.showToast !== 'function')
+            return;
+        wx.showToast({ title, icon: 'none' });
+    },
+    nextTick(callback) {
+        if (typeof wx !== 'undefined' && typeof wx.nextTick === 'function') {
+            wx.nextTick(callback);
+            return;
+        }
+        setTimeout(callback, 0);
+    },
     measureScene() {
         const scene = this.scene;
         if (scene === null)
             return;
         // The stage excludes the safe area and controls; window size is not canvas size.
-        wx.nextTick(() => {
+        this.nextTick(() => {
             if (this.disposed || this.scene !== scene)
                 return;
             const query = this.selectorQuery();
@@ -187,7 +242,8 @@ Page({
             };
             this.scene = scene;
             this.setData({ renderState: 'ready' });
-            if (this.visible)
+            // 内存压力下不启动：告警可能早于场景就绪到达（见 watchMemoryWarning）。
+            if (this.visible && !this.memoryPressure)
                 scene.start();
             // 云端进度若先于场景返回，在这里补应用一次。
             if (this.pendingRestoreProgress >= 0) {
@@ -208,7 +264,7 @@ Page({
             if (this.disposed)
                 return;
             this.setData({ canvasMounted: true }, () => {
-                wx.nextTick(() => { if (!this.disposed)
+                this.nextTick(() => { if (!this.disposed)
                     this.setupScene(); });
             });
         });
@@ -339,6 +395,86 @@ Page({
         void (0, season_sync_1.saveSeasonProgress)(progress);
     },
     /* ---------------------------------------------------------------- *
+     * 内存告警（App 层转发 → 页面让出显存）
+     * ---------------------------------------------------------------- */
+    /**
+     * 订阅系统内存告警。
+     *
+     * 这一页整屏是 WebGL 画布，显存是最紧张的资源。收到告警时立刻停掉动画循环：
+     * 停止渲染后 three 的绘制调用归零，驱动得以回收纹理与缓冲，比什么都不做安全得多。
+     * 用户切到前台（onShow）时自动恢复——告警是瞬时信号，不该让页面停在黑屏。
+     *
+     * 不销毁场景：重建一次 WebGL 上下文的代价远大于停循环，纹理缓冲留着反而更快恢复。
+     */
+    watchMemoryWarning() {
+        if (this.unsubscribeMemoryWarning !== null)
+            return;
+        // 订阅之前就发生过的告警同样要生效：告警可能早于 onLoad 到达，
+        // 那时场景还不存在，只记标记，等 setupScene 时再兑现（否则事件被静默丢弃）。
+        if ((0, app_events_1.highestMemoryWarningLevel)() > 0)
+            this.memoryPressure = true;
+        this.unsubscribeMemoryWarning = (0, app_events_1.onMemoryWarning)((level) => this.handleMemoryWarning(level));
+    },
+    handleMemoryWarning(level) {
+        console.error('[season-tree] memory warning', JSON.stringify({ level }));
+        this.memoryPressure = true;
+        const scene = this.scene;
+        // 场景还没建好时无处可停，标记留给 setupScene 兑现。
+        if (scene !== null)
+            scene.stop();
+    },
+    /* ---------------------------------------------------------------- *
+     * 实时天气（低频取数，失败静默隐藏整行）
+     * ---------------------------------------------------------------- */
+    /**
+     * 拉取默认城市天气。命中 30 分钟缓存则不发请求。
+     * 失败时 weatherText 保持空串，WXML 的 wx:if 会把整行隐藏——宁可没有，
+     * 也不用假天气糊弄用户。
+     */
+    loadWeather(force = false) {
+        var _a;
+        const city = (_a = weather_1.CITIES[this.data.cityIndex]) !== null && _a !== void 0 ? _a : weather_1.DEFAULT_CITY;
+        void (0, weather_1.fetchWeather)(city, force).then(report => {
+            if (this.disposed)
+                return;
+            this.applyWeather(report);
+        });
+    },
+    /**
+     * 取数成功后写入天气文案；失败时按需给出一行提示。
+     * 提示用 shouldPromptWeatherFailure 收口，保证同一次失败只提示一次，
+     * 不让"天气是锦上添花"变成每次打开都在念叨的噪音。
+     */
+    applyWeather(report) {
+        if (report === null) {
+            if ((0, weather_1.shouldPromptWeatherFailure)(report)) {
+                this.setData({ weatherText: '', weatherErrorText: '天气暂不可用 · 点此重试' });
+                this.toast('天气暂不可用');
+            }
+            return;
+        }
+        if (this.data.weatherErrorText !== '')
+            this.setData({ weatherErrorText: '' });
+        const text = (0, weather_1.formatWeatherText)(report);
+        if (text !== this.data.weatherText)
+            this.setData({ weatherText: text });
+    },
+    /** 点失败提示 = 立刻重试一次（绕过缓存）。 */
+    onRetryWeather() {
+        (0, weather_1.acknowledgeWeatherFailure)();
+        this.setData({ weatherErrorText: '' });
+        this.loadWeather(true);
+    },
+    onCityChange(e) {
+        const city = weather_1.CITIES[Number(e.detail.value)];
+        if (city === undefined)
+            return;
+        this.setData({ cityIndex: Number(e.detail.value) }, () => {
+            // 换城市必须绕过缓存，否则会先显示旧城市的天气。
+            this.loadWeather(true);
+        });
+    },
+    /* ---------------------------------------------------------------- *
      * 交互
      * ---------------------------------------------------------------- */
     onSliderChanging(e) {
@@ -372,7 +508,7 @@ Page({
         }
         catch (error) {
             console.error('Tree preset initialization failed', error);
-            wx.showToast({ title: '树种切换失败，请重试', icon: 'none' });
+            this.toast('树种切换失败，请重试');
         }
     },
     onToggleControls() { this.setData({ controlsOpen: !this.data.controlsOpen }, () => this.measureScene()); },

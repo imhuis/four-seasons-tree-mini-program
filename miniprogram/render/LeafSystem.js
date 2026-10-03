@@ -16,32 +16,43 @@ class LeafSystem {
         for (let branch = 0; branch < trunk.count; branch++) {
             if (!trunk.branches[branch].leafy)
                 continue;
+            const b = trunk.branches[branch];
+            const branchAngle = Math.atan2(b.z1 - b.z0, b.x1 - b.x0);
+            const needle = trunk.preset.leafShape === 'needle';
             for (let i = 0; i < trunk.preset.leafDensity; i++) {
+                const angle = branchAngle + (needle ? (i % 2 === 0 ? -1 : 1) * 1.05 : i * 2.39996) + (0, math_1.randRange)(rng, -0.22, 0.22);
+                const elevation = (0, math_1.randRange)(rng, needle ? 0.04 : 0.12, needle ? 0.24 : 0.52);
+                const horizontal = Math.sqrt(1 - elevation * elevation);
+                const rotation = Math.acos(Math.cos(angle) * horizontal);
+                const tilt = Math.atan2(Math.sin(angle) * horizontal, elevation);
+                // Rotate the blade around its petiole so it generally faces the sky, with natural variation.
+                const roll = Math.atan2(-Math.cos(rotation) * Math.cos(tilt), -Math.sin(tilt)) + (0, math_1.randRange)(rng, -0.32, 0.32);
                 this.leaves.push({
-                    branch, t: (0, math_1.randRange)(rng, 0.15, 1.06),
-                    dx: (0, math_1.randRange)(rng, -0.025, 0.025), dy: (0, math_1.randRange)(rng, -0.016, 0.016), dz: (0, math_1.randRange)(rng, -0.03, 0.03),
-                    size: (0, math_1.randRange)(rng, 0.018, 0.031) * trunk.preset.leafSize, rotation: rng() * math_1.TAU, tilt: rng() * math_1.TAU,
+                    branch, t: 0.12 + (i + 0.5) / trunk.preset.leafDensity * 0.82 + (0, math_1.randRange)(rng, -0.016, 0.016),
+                    size: (0, math_1.randRange)(rng, 0.018, 0.030) * trunk.preset.leafSize, rotation, tilt, roll,
                     phase: rng() * math_1.TAU, threshold: rng() * 0.78, tint: (0, math_1.randRange)(rng, -20, 16),
                 });
             }
         }
-        this.batch = new MeshBatch_1.MeshBatch(three, this.leaves.length, trunk.preset.leafShape);
+        this.batch = new MeshBatch_1.MeshBatch(three, this.leaves.length, trunk.preset.leafShape, 'leaf');
     }
     update(time, state) {
         this.batch.begin();
         this.visible.length = 0;
         for (let i = 0; i < this.leaves.length; i++) {
             const leaf = this.leaves[i];
-            const size = leaf.size * state.leafScale * this.trunk.branchGrowth(leaf.branch) * (0, math_1.easeInOutSine)((state.leafAmount - leaf.threshold) / 0.22);
+            const size = this.leafSize(leaf, state);
             if (size < 0.0005)
                 continue;
             this.visible.push(i);
-            this.position(leaf, time, state, this.point);
             const bend = Math.sin(time * 1.7 + leaf.phase) * state.windStrength;
+            const rotation = leaf.rotation + bend * 0.10;
+            const tilt = leaf.tilt + bend * 0.12;
+            this.position(leaf, size, rotation, tilt, this.point);
             this.leafColor(i, state);
             const shape = this.trunk.preset.leafShape;
-            const width = shape === 'needle' ? 0.09 : shape === 'oval' ? 0.48 : 0.8;
-            this.batch.write(this.point.x, this.point.y, this.point.z, size, size * width, size * 0.06, leaf.rotation + bend * 0.22, leaf.tilt + bend * 0.18, this.color, leaf.tint);
+            const width = shape === 'needle' ? 0.09 : shape === 'oval' ? 0.46 : 0.8;
+            this.batch.write(this.point.x, this.point.y, this.point.z, size, size * width, size * 0.18, rotation, tilt, this.color, leaf.tint, shape, leaf.roll + bend * 0.20);
         }
         this.batch.commit();
     }
@@ -50,8 +61,9 @@ class LeafSystem {
             return false;
         const index = this.visible[Math.min(this.visible.length - 1, Math.floor(random * this.visible.length))];
         const leaf = this.leaves[index];
-        this.position(leaf, time, state, out);
-        out.size = leaf.size * state.leafScale;
+        const bend = Math.sin(time * 1.7 + leaf.phase) * state.windStrength;
+        out.size = this.leafSize(leaf, state);
+        this.position(leaf, out.size, leaf.rotation + bend * 0.10, leaf.tilt + bend * 0.12, out);
         out.tint = leaf.tint;
         this.leafColor(index, state);
         out.color = this.color;
@@ -65,11 +77,17 @@ class LeafSystem {
             (0, color_1.lerpColor)(this.color, this.color, this.autumnColors[1], 0.7);
         }
     }
-    position(leaf, time, state, out) {
+    leafSize(leaf, state) {
+        return leaf.size * state.leafScale * this.trunk.branchGrowth(leaf.branch)
+            * (0, math_1.easeInOutSine)((state.leafAmount - leaf.threshold) / 0.22);
+    }
+    position(leaf, size, rotation, tilt, out) {
         this.trunk.samplePosition(leaf.branch, leaf.t, out);
-        out.x += leaf.dx + Math.sin(time * 1.7 + leaf.phase) * state.windStrength * 0.004;
-        out.y += leaf.dy;
-        out.z += leaf.dz;
+        const reach = size * 1.28;
+        const vertical = Math.sin(rotation) * reach;
+        out.x += Math.cos(rotation) * reach;
+        out.y += vertical * Math.cos(tilt);
+        out.z += vertical * Math.sin(tilt);
     }
     dispose() { this.batch.dispose(); }
 }

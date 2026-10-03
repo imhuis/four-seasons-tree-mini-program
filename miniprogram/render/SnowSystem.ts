@@ -15,9 +15,9 @@ export class SnowSystem {
   private snowAmount = -1;
   private readonly source: FoliageSource = { x: 0, y: 0, z: 0, size: 0, tint: 0 };
 
-  constructor(three: Three, private readonly particles: ParticleSystem, seed = 60607) {
+  constructor(three: Three, private readonly particles: ParticleSystem, seed = 60607, private readonly emitOnly = false) {
     const rng = createRng(seed);
-    for (let i = 0; i < GROUND_SNOW_CAPACITY; i++) {
+    for (let i = 0; i < (emitOnly ? 0 : GROUND_SNOW_CAPACITY); i++) {
       const angle = rng() * TAU;
       const radius = Math.sqrt(rng()) * 0.65;
       this.mounds.push({ x: Math.cos(angle) * radius, z: Math.sin(angle) * radius,
@@ -37,6 +37,8 @@ export class SnowSystem {
       this.source.size = 0.003 + Math.random() * 0.003;
       this.particles.emit('snow', this.source, state);
     }
+    // GroundSurface owns the terrain-conforming snow cover in the main scene.
+    if (this.emitOnly) return;
     // Mounds stay still; snowfall emission continues even when their geometry is unchanged.
     if (state.snowAmount === this.snowAmount) return;
     this.snowAmount = state.snowAmount;

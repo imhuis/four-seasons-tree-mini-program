@@ -32,10 +32,21 @@ function initCloudSync(handlers) {
         return;
     initStarted = true;
     handlers.onStatus('connecting');
+    // 预览面板等模拟器可能没有 wx.login；缺方法时直接进入本地模式，
+    // 不能让它抛错——那会中断 onLoad，后面的天气取数与场景初始化都跑不到。
+    if (typeof wx === 'undefined' || typeof wx.login !== 'function') {
+        console.error('[season-tree] cloud login unavailable', JSON.stringify({ stage: 'wx.login', message: 'not implemented' }));
+        handlers.onStatus('local');
+        return;
+    }
     wx.login({
         success: async ({ code }) => {
             try {
                 // appid 必须取当前运行时的小程序（试用版/正式版是两个不同小程序）。
+                if (typeof wx.getAccountInfoSync !== 'function') {
+                    handlers.onStatus('local');
+                    return;
+                }
                 const appid = wx.getAccountInfoSync().miniProgram.appId;
                 const { data: session, error } = await (0, cloud_1.getCloud)().auth.signInWithWechat(code, appid);
                 if (error !== null || session === null) {

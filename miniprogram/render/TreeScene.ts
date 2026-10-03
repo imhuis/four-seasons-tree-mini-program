@@ -1,11 +1,11 @@
-import type { DirectionalLight, Group, HemisphereLight, Mesh, MeshBasicMaterial, OrthographicCamera, PerspectiveCamera, Scene, ShaderMaterial, WebGLRenderer } from 'three';
+import type { DirectionalLight, Group, HemisphereLight, Mesh, OrthographicCamera, PerspectiveCamera, Scene, ShaderMaterial, WebGLRenderer } from 'three';
 import { clamp, wrap01 } from '../utils/math';
 import { createScopedThreejs } from '../vendor/three';
 import { BranchSystem } from './BranchSystem';
 import { FlowerSystem } from './FlowerSystem';
 import { LeafSystem, type FoliageSource } from './LeafSystem';
 import { ParticleSystem } from './ParticleSystem';
-import { SeasonController, type SeasonState } from './SeasonController';
+import { SeasonController } from './SeasonController';
 import { SnowSystem } from './SnowSystem';
 import { TreeTrunk } from './TreeTrunk';
 import { DEFAULT_TREE_PRESET, treePresetById } from './TreePresets';
@@ -15,6 +15,7 @@ import { FruitSystem } from './FruitSystem';
 import { RainSystem } from './RainSystem';
 import { MeshBatch } from './MeshBatch';
 import type { Three } from './types';
+import { GroundSystem } from './GroundSystem';
 
 const MAX_DPR = 2;
 const MAX_DELTA = 0.05;
@@ -53,12 +54,7 @@ export class TreeScene {
   private skyCamera: OrthographicCamera | null = null;
   private skyMesh: Mesh | null = null;
   private skyMaterial: ShaderMaterial | null = null;
-  private ground: Mesh | null = null;
-  private groundMaterial: MeshBasicMaterial | null = null;
-  private groundSnow: Mesh | null = null;
-  private groundSnowMaterial: MeshBasicMaterial | null = null;
-  private shadow: Mesh | null = null;
-  private shadowMaterial: MeshBasicMaterial | null = null;
+  private ground: GroundSystem | null = null;
   private branches: BranchSystem | null = null;
   private leaves: LeafSystem | null = null;
   private flowers: FlowerSystem | null = null;
@@ -120,32 +116,17 @@ export class TreeScene {
       this.skyMesh = new three.Mesh(new three.PlaneBufferGeometry(2, 2), this.skyMaterial);
       this.sky.add(this.skyMesh);
 
-      // Keep the broad ground area on the season palette; light only the 3D details.
-      this.groundMaterial = new three.MeshBasicMaterial({ color: 0xd6cab4 });
-      this.ground = new three.Mesh(new three.CircleBufferGeometry(3, 64), this.groundMaterial);
-      this.ground.rotation.x = -Math.PI / 2;
-      this.ground.position.y = -0.005;
-      this.world.add(this.ground);
-      this.groundSnowMaterial = new three.MeshBasicMaterial({ color: 0xfcfcfa, transparent: true, opacity: 0, depthWrite: false });
-      this.groundSnow = new three.Mesh(new three.CircleBufferGeometry(3, 64), this.groundSnowMaterial);
-      this.groundSnow.rotation.x = -Math.PI / 2;
-      this.groundSnow.position.y = -0.003;
-      this.world.add(this.groundSnow);
-      this.shadowMaterial = new three.MeshBasicMaterial({ color: 0x5c5845, transparent: true, opacity: 0.10, depthWrite: false });
-      this.shadow = new three.Mesh(new three.CircleBufferGeometry(0.25, 40), this.shadowMaterial);
-      this.shadow.rotation.x = -Math.PI / 2;
-      this.shadow.position.y = -0.001;
-      this.shadow.scale.set(1, 0.8, 1);
-      this.world.add(this.shadow);
+      this.ground = new GroundSystem(three);
+      this.world.add(this.ground.group);
 
       this.treeGroup = new three.Group();
       this.world.add(this.treeGroup);
       this.installTree(three, this.trunk);
       this.seed = new MeshBatch(three, 1, 'oval');
-      this.particles = new ParticleSystem(three);
-      this.snow = new SnowSystem(three, this.particles);
+      this.particles = new ParticleSystem(three, this.ground.surface.heightAt);
+      this.snow = new SnowSystem(three, this.particles, 60607, true);
       this.rain = new RainSystem(this.particles);
-      this.world.add(this.seed.mesh, this.particles.batch.mesh, this.snow.batch.mesh);
+      this.world.add(this.seed.mesh, this.particles.batch.mesh);
       this.resize(cssWidth, cssHeight);
     } catch (error: unknown) {
       this.destroy();
@@ -215,16 +196,13 @@ export class TreeScene {
     this.branches?.dispose(); this.leaves?.dispose(); this.flowers?.dispose();
     this.fruits?.dispose(); this.seed?.dispose();
     this.particles?.dispose(); this.snow?.dispose();
-    this.ground?.geometry.dispose(); this.groundMaterial?.dispose();
-    this.groundSnow?.geometry.dispose(); this.groundSnowMaterial?.dispose();
-    this.shadow?.geometry.dispose(); this.shadowMaterial?.dispose();
+    this.ground?.dispose();
     this.skyMesh?.geometry.dispose(); this.skyMaterial?.dispose();
     this.renderer?.dispose();
     this.renderer?.forceContextLoss();
     this.canvas = null; this.renderer = null; this.world = null; this.camera = null;
     this.sky = null; this.skyCamera = null; this.skyMesh = null; this.skyMaterial = null;
-    this.ground = null; this.groundMaterial = null; this.groundSnow = null; this.groundSnowMaterial = null;
-    this.shadow = null; this.shadowMaterial = null;
+    this.ground = null;
     this.branches = null; this.leaves = null; this.flowers = null; this.particles = null; this.snow = null;
     this.fruits = null; this.seed = null; this.rain = null;
     this.treeGroup = null; this.three = null; this.sunlight = null; this.ambient = null;
@@ -353,10 +331,7 @@ export class TreeScene {
     this.trunk.updateSway(this.elapsed, state.windStrength);
     this.treeGroup?.scale.setScalar(growth.scale);
     if (this.treeGroup !== null) this.treeGroup.visible = this.growthProgress > 0;
-    if (this.shadow !== null) {
-      const shadowScale = Math.max(0.15, growth.scale);
-      this.shadow.scale.set(shadowScale, shadowScale * 0.8, 1);
-    }
+    this.ground?.update(this.elapsed, state, environment, growth, this.trunk.preset, this.trunk.bounds.maxY);
     this.branches?.update(state, growth.thickness, 0.35 + 0.65 * environment.daylight);
     this.leaves?.update(this.elapsed, state);
     this.flowers?.update(state);
@@ -383,14 +358,14 @@ export class TreeScene {
     this.snow?.update(delta, this.trunk.bounds.maxY, state);
     this.rain?.update(delta, this.trunk.bounds.maxY, environment.rainRate, state);
     this.particles?.update(delta, this.elapsed, state);
-    this.applyEnvironment(state, environment);
+    this.applyEnvironment(environment);
   }
 
   private scaleSource(scale: number): void {
     this.source.x *= scale; this.source.y *= scale; this.source.z *= scale; this.source.size *= scale;
   }
 
-  private applyEnvironment(state: SeasonState, environment: EnvironmentState): void {
+  private applyEnvironment(environment: EnvironmentState): void {
     if (this.skyMaterial !== null) {
       this.skyMaterial.uniforms.top.value.setRGB(environment.skyTop[0] / 255, environment.skyTop[1] / 255, environment.skyTop[2] / 255);
       this.skyMaterial.uniforms.bottom.value.setRGB(environment.skyBottom[0] / 255, environment.skyBottom[1] / 255, environment.skyBottom[2] / 255);
@@ -402,14 +377,6 @@ export class TreeScene {
       this.sunlight.position.set(Math.cos(environment.sunAngle) * 3, Math.max(0.4, Math.sin(environment.sunAngle) * 4), 3);
       this.sunlight.color.setRGB(1 - (1 - environment.daylight) * 0.45, 0.94, 0.88 + (1 - environment.daylight) * 0.12);
     }
-    this.groundMaterial?.color.setRGB(environment.groundColor[0] / 255, environment.groundColor[1] / 255, environment.groundColor[2] / 255);
-    if (this.groundSnowMaterial !== null) {
-      this.groundSnowMaterial.opacity = state.snowAmount * 0.85;
-      const brightness = 0.35 + environment.daylight * 0.65;
-      this.groundSnowMaterial.color.setRGB(brightness, brightness, brightness);
-    }
-    if (this.groundSnow !== null) this.groundSnow.visible = state.snowAmount > 0.01;
-    if (this.shadowMaterial !== null) this.shadowMaterial.opacity = 0.10 * environment.daylight * (1 - state.snowAmount * 0.5);
   }
 
   private render(): void {

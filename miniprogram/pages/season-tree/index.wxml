@@ -72,7 +72,30 @@
       </view>
     </view>
 
-    <text class="hud-cloud">{{cloudStatusText}}</text>
+    <view class="hud-meta">
+      <text class="hud-cloud">{{cloudStatusText}}</text>
+      <view
+        wx:if="{{weatherErrorText}}"
+        class="weather-error"
+        bindtap="onRetryWeather"
+        hover-class="weather-error--hover"
+      >
+        <text class="weather-error-text">{{weatherErrorText}}</text>
+      </view>
+      <picker
+        wx:elif="{{weatherText}}"
+        class="city-picker"
+        mode="selector"
+        range="{{cityNames}}"
+        value="{{cityIndex}}"
+        bindchange="onCityChange"
+      >
+        <view class="city-picker-inner">
+          <text class="weather-text">{{weatherText}}</text>
+          <text class="picker-arrow">⌄</text>
+        </view>
+      </picker>
+    </view>
     <scroll-view wx:if="{{controlsOpen}}" class="settings" scroll-y="{{true}}">
       <text class="tree-description">{{treeDescription}}</text>
       <view class="control-label"><text>生长 · {{growthStage}}</text><view class="small-play" bindtap="onToggleGrowth">{{growthPlaying ? '暂停生长' : '播放生长'}}</view></view>

@@ -6,14 +6,15 @@ const MeshBatch_1 = require("./MeshBatch");
 const types_1 = require("./types");
 const SNOW_COLOR = [252, 252, 250];
 class SnowSystem {
-    constructor(three, particles, seed = 60607) {
+    constructor(three, particles, seed = 60607, emitOnly = false) {
         this.particles = particles;
+        this.emitOnly = emitOnly;
         this.mounds = [];
         this.emitAccumulator = 0;
         this.snowAmount = -1;
         this.source = { x: 0, y: 0, z: 0, size: 0, tint: 0 };
         const rng = (0, math_1.createRng)(seed);
-        for (let i = 0; i < types_1.GROUND_SNOW_CAPACITY; i++) {
+        for (let i = 0; i < (emitOnly ? 0 : types_1.GROUND_SNOW_CAPACITY); i++) {
             const angle = rng() * math_1.TAU;
             const radius = Math.sqrt(rng()) * 0.65;
             this.mounds.push({ x: Math.cos(angle) * radius, z: Math.sin(angle) * radius,
@@ -32,6 +33,9 @@ class SnowSystem {
             this.source.size = 0.003 + Math.random() * 0.003;
             this.particles.emit('snow', this.source, state);
         }
+        // GroundSurface owns the terrain-conforming snow cover in the main scene.
+        if (this.emitOnly)
+            return;
         // Mounds stay still; snowfall emission continues even when their geometry is unchanged.
         if (state.snowAmount === this.snowAmount)
             return;

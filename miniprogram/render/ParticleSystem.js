@@ -8,7 +8,8 @@ const SNOW_COLOR = [252, 252, 250];
 const RAIN_COLOR = [146, 177, 199];
 /** Bounded world-space pool; landed leaves retain their autumn color. */
 class ParticleSystem {
-    constructor(three) {
+    constructor(three, groundHeight = () => 0) {
+        this.groundHeight = groundHeight;
         this.pool = [];
         this.cursor = 0;
         this.groundCursor = 0;
@@ -33,7 +34,7 @@ class ParticleSystem {
         p.vz = (Math.random() - 0.5) * 0.035;
         p.size = source.size;
         p.rotation = kind === 'rain' ? Math.PI / 2 : Math.random() * math_1.TAU;
-        p.shape = kind === 'leaf' ? (_a = source.shape) !== null && _a !== void 0 ? _a : 'diamond' : 'diamond';
+        p.shape = kind === 'leaf' ? (_a = source.shape) !== null && _a !== void 0 ? _a : 'diamond' : kind === 'petal' ? 'oval' : 'diamond';
         p.phase = Math.random() * math_1.TAU;
         p.age = 0;
         const color = kind === 'leaf' ? (_b = source.color) !== null && _b !== void 0 ? _b : state.leafColor : kind === 'petal' ? state.flowerColor : kind === 'rain' ? RAIN_COLOR : SNOW_COLOR;
@@ -57,14 +58,14 @@ class ParticleSystem {
                 p.y += p.vy * delta;
                 p.z += (p.vz + Math.cos(time + p.phase) * state.windStrength * 0.02) * delta;
                 p.rotation += delta * (p.kind === 'rain' ? 0 : p.kind === 'snow' ? 0.3 : 1.5);
-                if (p.y <= 0.006) {
-                    if (p.kind === 'leaf')
+                if (p.y <= this.groundHeight(p.x, p.z) + 0.006) {
+                    if (p.kind === 'leaf' || p.kind === 'petal')
                         this.land(p);
                     p.active = false;
                     continue;
                 }
             }
-            const retained = p.grounded ? state.groundLeafAlpha * (1 - state.snowAmount * 0.9) * (1 - p.age / 24) : 1;
+            const retained = p.grounded ? (p.kind === 'petal' ? 0.8 : state.groundLeafAlpha) * (1 - state.snowAmount * 0.9) * (1 - p.age / 24) : 1;
             const size = p.size * Math.sqrt(Math.max(0, retained));
             const flake = p.kind === 'snow';
             const width = p.kind === 'rain' ? 0.035 : flake ? 1 : p.shape === 'needle' ? 0.09 : p.shape === 'oval' || p.shape === 'diamond' ? 0.5 : 0.8;
@@ -83,9 +84,9 @@ class ParticleSystem {
         this.groundCursor = (this.groundCursor + 1) % types_1.GROUND_LEAF_CAPACITY;
         ground.active = true;
         ground.grounded = true;
-        ground.kind = 'leaf';
+        ground.kind = p.kind;
         ground.x = p.x;
-        ground.y = 0.004;
+        ground.y = this.groundHeight(p.x, p.z) + 0.004;
         ground.z = p.z;
         ground.size = p.size;
         ground.rotation = p.rotation;

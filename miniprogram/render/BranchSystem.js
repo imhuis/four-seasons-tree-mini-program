@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.BranchSystem = void 0;
 const math_1 = require("../utils/math");
-const RINGS = 6;
+const RINGS = 7;
 const SIDES = 8;
 const SIDE_COS = [];
 const SIDE_SIN = [];
@@ -15,14 +15,25 @@ class BranchSystem {
     constructor(three, trunk) {
         this.trunk = trunk;
         this.point = { x: 0, y: 0, z: 0 };
+        this.tangent = { x: 0, y: 0, z: 0 };
         this.trunkColor = [-1, -1, -1];
         const vertexCount = trunk.count * RINGS * (SIDES + 1);
         this.positions = new Float32Array(vertexCount * 3);
         this.normals = new Float32Array(vertexCount * 3);
         this.colors = new Float32Array(vertexCount * 3);
+        const uv = new Float32Array(vertexCount * 2);
         const indices = new Uint16Array(trunk.count * (RINGS - 1) * SIDES * 6);
         let cursor = 0;
         for (let branch = 0; branch < trunk.count; branch++) {
+            const b = trunk.branches[branch];
+            const length = Math.hypot(b.x1 - b.x0, b.y1 - b.y0, b.z1 - b.z0);
+            for (let ring = 0; ring < RINGS; ring++) {
+                for (let side = 0; side <= SIDES; side++) {
+                    const index = (branch * RINGS * (SIDES + 1) + ring * (SIDES + 1) + side) * 2;
+                    uv[index] = side / SIDES;
+                    uv[index + 1] = ring / (RINGS - 1) * length * 32 + b.phase;
+                }
+            }
             for (let ring = 0; ring < RINGS - 1; ring++) {
                 for (let side = 0; side < SIDES; side++) {
                     const a = branch * RINGS * (SIDES + 1) + ring * (SIDES + 1) + side;
@@ -39,8 +50,29 @@ class BranchSystem {
         this.geometry.addAttribute('position', this.positionAttribute);
         this.geometry.addAttribute('normal', this.normalAttribute);
         this.geometry.addAttribute('color', this.colorAttribute);
+        this.geometry.addAttribute('uv', new three.BufferAttribute(uv, 2));
         this.geometry.setIndex(new three.BufferAttribute(indices, 1));
         this.material = new three.MeshLambertMaterial({ vertexColors: three.VertexColors, side: three.DoubleSide });
+        this.material.onBeforeCompile = shader => {
+            shader.uniforms.treeBarkStyle = { value: trunk.preset.bark === 'birch' ? 1 : trunk.preset.bark === 'mottled' ? 2 : 0 };
+            shader.vertexShader = `varying vec2 treeBarkUv;\n${shader.vertexShader}`
+                .replace('#include <begin_vertex>', '#include <begin_vertex>\ntreeBarkUv = uv;');
+            shader.fragmentShader = `uniform float treeBarkStyle; varying vec2 treeBarkUv;\n${shader.fragmentShader}`
+                .replace('#include <color_fragment>', `#include <color_fragment>
+          float grain = sin(treeBarkUv.x * 87.9646 + sin(treeBarkUv.y * 0.7) * 0.55);
+          float grooves = smoothstep(0.72, 0.98, grain);
+          float roughness = 0.95 + 0.05 * sin(treeBarkUv.y * 8.0 + treeBarkUv.x * 138.2301);
+          if (treeBarkStyle < 0.5) {
+            diffuseColor.rgb *= roughness - grooves * 0.18;
+          } else if (treeBarkStyle < 1.5) {
+            float lenticels = smoothstep(0.87, 0.99, sin(treeBarkUv.y * 9.0 + sin(treeBarkUv.x * 12.5664)))
+              * smoothstep(0.1, 0.7, sin(treeBarkUv.x * 31.4159 + treeBarkUv.y));
+            diffuseColor.rgb *= roughness - lenticels * 0.52;
+          } else {
+            float patches = sin(treeBarkUv.y * 1.8 + sin(treeBarkUv.x * 18.8496));
+            diffuseColor.rgb *= 0.9 + patches * 0.1 - grooves * 0.04;
+          }`);
+        };
         this.snowMaterial = new three.ShaderMaterial({
             uniforms: { amount: { value: 0 }, brightness: { value: 1 } },
             vertexShader: 'varying vec3 rimNormal; void main() { rimNormal = normal; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
@@ -56,7 +88,6 @@ class BranchSystem {
     }
     update(state, thickness = 1, brightness = 1) {
         const trunk = this.trunk;
-        const off = trunk.offsets;
         const bark = trunk.preset.bark;
         const updateColors = bark !== 'plain' || state.trunkColor[0] !== this.trunkColor[0]
             || state.trunkColor[1] !== this.trunkColor[1] || state.trunkColor[2] !== this.trunkColor[2];
@@ -67,9 +98,10 @@ class BranchSystem {
             for (let ring = 0; ring < RINGS; ring++) {
                 const t = ring / (RINGS - 1);
                 trunk.samplePosition(id, t, this.point);
-                let tx = 2 * ((1 - t) * (b.cx - b.x0) + t * (b.x1 - b.cx)) + off.tipX[id] - off.startX[id];
-                let ty = 2 * ((1 - t) * (b.cy - b.y0) + t * (b.y1 - b.cy)) + off.tipY[id] - off.startY[id];
-                let tz = 2 * ((1 - t) * (b.cz - b.z0) + t * (b.z1 - b.cz)) + off.tipZ[id] - off.startZ[id];
+                trunk.sampleTangent(id, t, this.tangent);
+                let tx = this.tangent.x, ty = this.tangent.y, tz = this.tangent.z;
+                if (tx === 0 && ty === 0 && tz === 0)
+                    ty = 1;
                 const length = Math.hypot(tx, ty, tz) || 1;
                 tx /= length;
                 ty /= length;
@@ -85,7 +117,8 @@ class BranchSystem {
                 const vx = ty * uz - tz * uy;
                 const vy = tz * ux - tx * uz;
                 const vz = tx * uy - ty * ux;
-                const radius = (b.w0 + (b.w1 - b.w0) * t) * branchThickness;
+                const rootFlare = b.parent < 0 ? 1 + Math.max(0, 1 - t * 5) * 0.24 : 1;
+                const radius = (b.w0 + (b.w1 - b.w0) * t) * branchThickness * rootFlare;
                 for (let side = 0; side <= SIDES; side++) {
                     const nx = ux * SIDE_COS[side] + vx * SIDE_SIN[side];
                     const ny = uy * SIDE_COS[side] + vy * SIDE_SIN[side];

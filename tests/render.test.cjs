@@ -29,10 +29,28 @@ test('animated child joints remain attached to their parent in 3D', () => {
   const childPoint = { x: 0, y: 0, z: 0 };
   for (let i = 1; i < trunk.count; i++) {
     const branch = trunk.branches[i];
-    const t = branch.parent === 0 ? branch.y0 / trunk.branches[0].y1 : 1;
+    const t = branch.parentT;
     trunk.samplePosition(branch.parent, t, parentPoint);
     trunk.samplePosition(i, 0, childPoint);
     for (const axis of ['x', 'y', 'z']) assert.ok(Math.abs(parentPoint[axis] - childPoint[axis]) < 1e-7);
+  }
+});
+
+test('branch tangents follow the live curve during growth and wind', () => {
+  const trunk = new TreeTrunk();
+  const before = { x: 0, y: 0, z: 0 }, after = { x: 0, y: 0, z: 0 }, tangent = { x: 0, y: 0, z: 0 };
+  const step = 0.001;
+  for (const growth of [0, 0.24, 0.55, 1]) {
+    trunk.setGrowth(growth); trunk.updateSway(8, 1);
+    for (let id = 0; id < trunk.count; id++) {
+      for (const t of [0.05, 0.5, 0.95]) {
+        trunk.samplePosition(id, t - step, before); trunk.samplePosition(id, t + step, after);
+        trunk.sampleTangent(id, t, tangent);
+        for (const axis of ['x', 'y', 'z']) {
+          assert.ok(Math.abs(tangent[axis] - (after[axis] - before[axis]) / (2 * step)) < 1e-7);
+        }
+      }
+    }
   }
 });
 
@@ -107,46 +125,152 @@ test('ground rotation keeps every vertex flat and batch capacity remains bounded
   batch.dispose();
 });
 
-test('batched face normals match transformed triangles for every shape, including flat and mixed meshes', () => {
-  const batch = new MeshBatch(three, 18, 'mixed');
+test('batched face normals match transformed triangles for solid and rolled thin leaves', () => {
   const shapes = ['diamond', 'needle', 'oval', 'maple', 'star', 'fan'];
-  for (const thickness of [0, 0.001, 0.04]) {
-    for (const shape of shapes) {
-      batch.write(0.03, 0.2, -0.1, 0.02, 0.013, thickness, 1.3, -0.8, [224, 111, 68], -5, shape);
+  for (const surface of ['solid', 'leaf']) {
+    const batch = new MeshBatch(three, 18, 'mixed', surface);
+    for (const thickness of [0, 0.001, 0.04]) {
+      for (const shape of shapes) {
+        batch.write(0.03, 0.2, -0.1, 0.02, 0.013, thickness, 1.3, -0.8, [224, 111, 68], -5, shape, 0.7);
+      }
     }
+    batch.commit();
+    const count = batch.geometry.drawRange.count * 3;
+    const reference = new three.BufferGeometry();
+    reference.addAttribute('position', new three.BufferAttribute(batch.geometry.attributes.position.array.slice(0, count), 3));
+    reference.computeVertexNormals();
+    const expected = reference.attributes.normal.array;
+    const actual = batch.geometry.attributes.normal.array;
+    for (let i = 0; i < count; i++) {
+      assert.ok(Number.isFinite(actual[i]));
+      assert.ok(Math.abs(actual[i] - expected[i]) < 0.0001, `normal component ${i}`);
+    }
+    reference.dispose(); batch.dispose();
   }
-  batch.commit();
-  const count = batch.geometry.drawRange.count * 3;
-  const reference = new three.BufferGeometry();
-  reference.addAttribute('position', new three.BufferAttribute(batch.geometry.attributes.position.array.slice(0, count), 3));
-  reference.computeVertexNormals();
-  const expected = reference.attributes.normal.array;
-  const actual = batch.geometry.attributes.normal.array;
-  for (let i = 0; i < count; i++) {
-    assert.ok(Number.isFinite(actual[i]));
-    assert.ok(Math.abs(actual[i] - expected[i]) < 0.0001, `normal component ${i}`);
-  }
-  reference.dispose(); batch.dispose();
 });
 
 test('batch uploads cover active triangles after shrinking, emptying and changing mesh shapes', () => {
-  const batch = new MeshBatch(three, 3, 'mixed');
-  for (const shapes of [['maple', 'oval', 'fan'], ['diamond'], [], ['needle', 'star']]) {
-    const versions = Object.values(batch.geometry.attributes).map(attribute => attribute.version);
-    batch.begin();
-    for (const shape of shapes) batch.write(0, 0, 0, 0.1, 0.05, 0.01, 0, 0, [255, 255, 255], 0, shape);
-    batch.commit();
-    assert.equal(batch.mesh.visible, shapes.length > 0);
-    Object.values(batch.geometry.attributes).forEach((attribute, index) => {
-      assert.equal(attribute.version, versions[index] + (shapes.length > 0 ? 1 : 0));
-      if (shapes.length > 0) {
-        assert.deepEqual(attribute.updateRange, { offset: 0, count: batch.geometry.drawRange.count * 3 });
-        // The r108 renderer consumes and resets each pending range.
-        attribute.updateRange.count = -1;
+  for (const surface of ['solid', 'leaf']) {
+    const batch = new MeshBatch(three, 3, 'mixed', surface);
+    for (const shapes of [['maple', 'oval', 'fan'], ['diamond'], [], ['needle', 'star']]) {
+      const geometry = batch.geometry;
+      // 几何通道每帧必传；颜色走脏标记，单独断言（见下一个用例）。
+      const versionOf = name => geometry.attributes[name].version;
+      const channels = Object.keys(geometry.attributes).filter(name => name !== 'color');
+      const before = Object.fromEntries(channels.map(name => [name, versionOf(name)]));
+      batch.begin();
+      for (const shape of shapes) batch.write(0, 0, 0, 0.1, 0.05, 0.01, 0, 0, [255, 255, 255], 0, shape);
+      batch.commit();
+      assert.equal(batch.mesh.visible, shapes.length > 0);
+      for (const name of channels) {
+        const attribute = geometry.attributes[name];
+        assert.equal(attribute.version, before[name] + (shapes.length > 0 ? 1 : 0));
+        if (shapes.length > 0) {
+          assert.deepEqual(attribute.updateRange, { offset: 0, count: geometry.drawRange.count * attribute.itemSize });
+          // The r108 renderer consumes and resets each pending range.
+          attribute.updateRange.count = -1;
+        }
       }
-    });
+    }
+    batch.dispose();
   }
+});
+
+test('color channel uploads once when unchanged and again when it actually shifts', () => {
+  // 首帧必传：GPU 缓冲区初始内容未定义，即使写入值恰好是默认值。
+  const batch = new MeshBatch(three, 2, 'diamond');
+  const color = batch.geometry.attributes.color;
+  batch.begin();
+  batch.write(0, 0, 0, 0.1, 0.08, 0.01, 0, 0, [255, 255, 255]);
+  batch.commit();
+  const first = color.version;
+  assert.equal(first, 1, 'first commit must upload color');
+
+  // 同一颜色再写一帧：几何照常更新，颜色不重传。
+  batch.begin();
+  batch.write(0, 0, 0, 0.1, 0.08, 0.01, 0, 0, [255, 255, 255]);
+  batch.commit();
+  assert.equal(color.version, first, 'unchanged color must not re-upload');
+  assert.equal(batch.geometry.attributes.position.version > 0, true, 'geometry still updates');
+
+  // 半阶以内的插值位移同样跳过——季节色就是这样逐帧微移的。
+  // 真实单帧位移约 0.09 个色阶，这里取 0.4 个色阶做亚阈值样本。
+  const nudged = [255, 255, 254.6];
+  batch.begin();
+  batch.write(0, 0, 0, 0.1, 0.08, 0.01, 0, 0, nudged);
+  batch.commit();
+  assert.equal(color.version, first, 'sub-threshold drift must not re-upload');
+
+  // 整阶级别的变化则必须上传，且写入的是本帧真实值。
+  batch.begin();
+  batch.write(0, 0, 0, 0.1, 0.08, 0.01, 0, 0, [200, 40, 40]);
+  batch.commit();
+  assert.equal(color.version, first + 1, 'real color change must upload');
+  const blue = color.array[2];
+  assert.ok(Math.abs(blue - 40 / 255) < 0.001, `blue channel should be current, got ${blue}`);
+
+  // 缩量（顶点数变少）时颜色无需重传：drawRange 变小，缓冲区内容依旧有效。
+  const stable = color.version;
+  batch.begin();
+  batch.write(0, 0, 0, 0.1, 0.08, 0.01, 0, 0, [200, 40, 40]);
+  batch.commit();
+  assert.equal(color.version, stable, 'shrinking batch keeps color buffer valid');
   batch.dispose();
+});
+
+test('emptied batch clears the mesh and lets the next frame re-upload color', () => {
+  const batch = new MeshBatch(three, 2, 'diamond');
+  const color = batch.geometry.attributes.color;
+  batch.begin();
+  batch.write(0, 0, 0, 0.1, 0.08, 0.01, 0, 0, [12, 200, 90]);
+  batch.commit();
+  const uploaded = color.version;
+
+  batch.begin();
+  batch.commit();
+  assert.equal(batch.mesh.visible, false);
+  assert.equal(batch.geometry.drawRange.count, 0);
+
+  // 清空后颜色数组仍保留上次的值，因此同色重建不该重传——这正是我们想要的。
+  batch.begin();
+  batch.write(0, 0, 0, 0.1, 0.08, 0.01, 0, 0, [12, 200, 90]);
+  batch.commit();
+  assert.equal(color.version, uploaded);
+  assert.equal(batch.mesh.visible, true);
+  batch.dispose();
+});
+
+test('leaf petioles stay on live branches while their vein coordinates remain static', () => {
+  for (const id of ['sakura', 'japanese-maple', 'ginkgo', 'dawn-redwood']) {
+    const preset = treePresetById(id);
+    const trunk = new TreeTrunk(7, preset);
+    const leaves = new LeafSystem(three, trunk);
+    const state = new SeasonController(preset).update(0.375);
+    const geometry = leaves.batch.geometry;
+    const uv = geometry.attributes.uv;
+    const uvVersion = uv.version, coordinates = uv.array.slice();
+    const verticesPerLeaf = geometry.attributes.position.count / leaves.leaves.length;
+    const joint = { x: 0, y: 0, z: 0 };
+    for (const growth of [0.38, 0.75, 1]) {
+      trunk.setGrowth(growth);
+      for (const time of [0, 3, 7]) {
+        trunk.updateSway(time, 1); leaves.update(time, state);
+        leaves.visible.forEach((index, item) => {
+          const leaf = leaves.leaves[index];
+          trunk.samplePosition(leaf.branch, leaf.t, joint);
+          // The petiole's two base corners straddle its attachment point.
+          const base = (item * verticesPerLeaf + verticesPerLeaf - 3) * 3;
+          const positions = geometry.attributes.position.array;
+          ['x', 'y', 'z'].forEach((axis, component) => {
+            assert.ok(Math.abs((positions[base + component] + positions[base + 6 + component]) / 2 - joint[axis]) < 1e-7);
+          });
+        });
+        assert.equal(uv.version, uvVersion);
+        assert.deepEqual(uv.array, coordinates);
+      }
+    }
+    leaves.dispose();
+  }
 });
 
 test('plain bark retains its color during sway and changed colors still reach the buffer', () => {

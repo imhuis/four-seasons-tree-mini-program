@@ -77,8 +77,8 @@ test('fan, lobed and needle foliage has distinct geometry and vanishes on winter
     assert.equal(leaves.batch.geometry.drawRange.count, 0);
     leaves.dispose();
   }
-  assert.equal(vertices.get('needle'), 24);
-  assert.equal(vertices.get('maple'), 84);
+  assert.equal(vertices.get('needle'), 15);
+  assert.equal(vertices.get('maple'), 51);
   assert.ok(vertices.get('fan') > vertices.get('needle'));
 });
 
@@ -95,7 +95,7 @@ test('all branch joints stay attached throughout growth and sway for every crown
       trunk.setGrowth(progress); trunk.updateSway(2, 1);
       for (let id = 1; id < trunk.count; id++) {
         const branch = trunk.branches[id];
-        const t = branch.parent === 0 ? branch.y0 / trunk.branches[0].y1 : 1;
+        const t = branch.parentT;
         trunk.samplePosition(branch.parent, t, parent); trunk.samplePosition(id, 0, child);
         for (const axis of ['x', 'y', 'z']) assert.ok(Math.abs(parent[axis] - child[axis]) < 1e-7, `${preset.id}/${progress}/${axis}`);
       }
