@@ -1,0 +1,9 @@
+node_modules/
+*.log
+.DS_Store
+
+# 注意：不要忽略 miniprogram/**/*.js 与 *.js.map。
+# 发布通道上传的是编译后的产物，且会按 .gitignore 过滤文件；
+# 一旦把 .js 排除，上传时会报 "pages/season-tree/index.js" 缺失。
+# 这些 .js 由 `npm run build` 在源码目录就地生成，引擎也随构建复制。
+.verify/

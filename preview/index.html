@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>四时木 · 四季与生长</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #f7f3ec; color: #2f3a33; font-family: system-ui, sans-serif; }
+  main { max-width: 1320px; height: 100dvh; padding: 24px; margin: auto; display: flex; }
+  .stage { flex: 1; min-width: 0; position: relative; overflow: hidden; border-radius: 4px; }
+  canvas { width: 100%; height: 100%; display: block; touch-action: none; }
+  .caption { position: absolute; top: 30px; left: 32px; pointer-events: none; }
+  .brand { font-size: 11px; letter-spacing: 4px; color: #6d7a70; margin-bottom: 18px; }
+  h1 { font-size: 44px; font-weight: 300; margin: 0 0 6px; }
+  .caption p { font-size: 14px; color: #6d7a70; letter-spacing: 3px; margin: 0; }
+  .hint { position: absolute; bottom: 16px; width: 100%; text-align: center; font-size: 12px; color: #6d7a70; pointer-events: none; }
+  .panel { width: 340px; padding: 8px 0 8px 30px; overflow-y: auto; }
+  .ticks, .hud { display: flex; justify-content: space-between; align-items: center; color: #6d7a70; font-size: 14px; }
+  input { width: 100%; margin: 14px 0; accent-color: #5c7a56; cursor: pointer; }
+  button { background: transparent; color: #5c7a56; border: 1px solid #e4ded2; border-radius: 30px; padding: 8px 16px; cursor: pointer; }
+  #result { font-size: 12px; color: #6d7a70; text-align: center; margin-top: 12px; }
+  h2 { font-weight: 400; font-size: 22px; margin: 0 0 6px; }
+  .intro, #description { font-size: 12px; line-height: 1.8; color: #6d7a70; margin: 0 0 14px; }
+  .control { border-top: 1px solid #e4ded2; margin-top: 22px; padding-top: 18px; }
+  .label { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 14px; margin-bottom: 3px; }
+  .small { font-size: 11px; padding: 6px 11px; white-space: nowrap; }
+  select { background: #f7f3ec; font: inherit; color: #2f3a33; border: 1px solid #d5dacb; padding: 10px 12px; border-radius: 4px; }
+  #species { width: 100%; font-size: 17px; margin-bottom: 10px; }
+  .markers { display: flex; justify-content: space-between; font-size: 10px; color: #879086; }
+  .season-note { margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 7px; font-size: 11px; color: #879086; }
+  .season-note span { border-left: 2px solid #dddccd; padding-left: 8px; }
+  .season-note .active { color: #5c7a56; border-color: #5c7a56; }
+  .night .caption h1 { color: #e4e6ef; }
+  .night .caption p, .night .brand, .night .hint { color: #c1c9dc; }
+  :focus-visible { outline: 2px solid #5c7a56; outline-offset: 4px; }
+  @media (max-width: 720px) {
+    main { padding: 0; display: block; height: auto; }
+    .stage { height: 56dvh; min-height: 320px; border-radius: 0; }
+    .panel { width: 100%; padding: 22px 28px 32px; overflow: visible; }
+    .caption { top: 22px; left: 28px; }
+    .brand { margin-bottom: 12px; }
+    h1 { font-size: 36px; }
+  }
+</style>
+<main>
+  <div class="stage">
+    <canvas aria-label="三维四时木"></canvas>
+    <div class="caption"><div class="brand">四时木 / FOUR SEASONS TREE</div><h1 id="title">春</h1><p id="slogan">粉白花海</p></div>
+    <div class="hint">拖动旋转 · 滚轮或双指缩放</div>
+  </div>
+  <div class="panel">
+    <h2>一棵树，一段时光</h2>
+    <p class="intro">选择树种，慢慢看它生长。</p>
+    <select id="species" aria-label="树种"></select>
+    <p id="description"></p>
+    <div class="season-note" id="seasonNotes"></div>
+    <section class="control">
+    <div class="ticks"><span>春</span><span>夏</span><span>秋</span><span>冬</span></div>
+    <input id="season" aria-label="季节进度" type="range" min="0" max="1000" value="0">
+    <div class="hud"><span id="phase">初春</span><button class="small" id="play">▶ 播放四季</button><span id="progress">0%</span></div>
+    </section>
+    <section class="control">
+      <div class="label"><label for="growth">生长 · <span id="growthStage">成树</span></label><button class="small" id="growthPlay">▶ 播放生长</button></div>
+      <input id="growth" aria-label="生长进度" type="range" min="0" max="1000" value="750">
+      <div class="markers"><span>种子</span><span>萌芽</span><span>幼树</span><span>成树</span><span>老树</span></div>
+    </section>
+    <section class="control">
+      <div class="label"><label for="time">昼夜 · <span id="timeText">12:00</span></label><button class="small" id="dayPlay">▶ 播放昼夜</button></div>
+      <input id="time" aria-label="一天中的时间" type="range" min="0" max="1440" value="720">
+      <div class="markers"><span>午夜</span><span>日出</span><span>正午</span><span>日落</span><span>午夜</span></div>
+    </section>
+    <section class="control">
+      <div class="label"><label for="weather">天气</label><select id="weather"><option value="auto">随季节</option><option value="clear">晴天</option><option value="rain">雨</option><option value="snow">雪</option></select></div>
+      <div class="label"><label for="intensity">雨雪强度</label><output id="intensityText">65%</output></div>
+      <input id="intensity" aria-label="雨雪强度" type="range" min="0" max="100" value="65">
+      <div class="label"><label for="light">光照强度</label><output id="lightText">100%</output></div>
+      <input id="light" aria-label="光照强度" type="range" min="0" max="150" value="100">
+    </section>
+    <div id="result">加载场景…</div>
+  </div>
+</main>
+<script src="/bundle.js"></script>
+<script>
+  // Only this preview bridges the native WebGL canvas to the WeChat canvas contract.
+  class PreviewCanvas {
+    constructor(element) {
+      this.element = element;
+      this.addEventListener = element.addEventListener.bind(element);
+      this.removeEventListener = element.removeEventListener.bind(element);
+    }
+    get width() { return this.element.width; }
+    set width(value) { this.element.width = value; }
+    get height() { return this.element.height; }
+    set height(value) { this.element.height = value; }
+    getContext(...args) { return this.element.getContext(...args); }
+    requestAnimationFrame(callback) { return requestAnimationFrame(callback); }
+    cancelAnimationFrame(handle) { cancelAnimationFrame(handle); }
+  }
+  window.wx = { getWindowInfo: () => ({ pixelRatio: devicePixelRatio }) };
+  const canvas = document.querySelector('canvas');
+  const scene = new TreeScene();
+  const slider = document.querySelector('#season');
+  const play = document.querySelector('#play');
+  const titles = ['春', '夏', '秋', '冬'];
+  const phases = ['初春', '暮春', '初夏', '盛夏', '初秋', '深秋', '初冬', '寒冬'];
+  const species = document.querySelector('#species');
+  for (const preset of TreePresets) {
+    const option = document.createElement('option'); option.value = preset.id; option.textContent = `${preset.icon} ${preset.name}`; species.append(option);
+  }
+  const controls = [...document.querySelectorAll('input, select, button')];
+  controls.forEach(control => { control.disabled = true; });
+  const syncUI = snapshot => {
+    const preset = TreePresets.find(value => value.id === snapshot.presetId);
+    slider.value = Math.round(snapshot.progress * 1000);
+    document.querySelector('#title').textContent = titles[snapshot.seasonIndex];
+    document.querySelector('#slogan').textContent = `${preset.name} · ${preset.seasons[snapshot.seasonIndex]}`;
+    document.querySelector('#phase').textContent = phases[snapshot.phaseIndex];
+    document.querySelector('#progress').textContent = Math.round(snapshot.progress * 100) + '%';
+    species.value = preset.id;
+    document.querySelector('#description').textContent = preset.description;
+    const notes = document.querySelector('#seasonNotes');
+    if (notes.dataset.preset !== preset.id) {
+      notes.replaceChildren(...preset.seasons.map((description, index) => {
+        const note = document.createElement('span'); note.textContent = `${titles[index]} · ${description}`; return note;
+      }));
+      notes.dataset.preset = preset.id;
+    }
+    [...notes.children].forEach((note, index) => note.classList.toggle('active', index === snapshot.seasonIndex));
+    play.textContent = snapshot.playing ? '❚❚ 暂停四季' : '▶ 播放四季';
+    document.querySelector('#growth').value = Math.round(snapshot.growthProgress * 1000);
+    document.querySelector('#growthStage').textContent = GrowthStages[snapshot.growthStageIndex];
+    document.querySelector('#growthPlay').textContent = snapshot.growthPlaying ? '❚❚ 暂停生长' : '▶ 播放生长';
+    const minutes = Math.floor(snapshot.timeProgress * 1440) % 1440;
+    document.querySelector('#time').value = minutes;
+    document.querySelector('#timeText').textContent = `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+    document.querySelector('#dayPlay').textContent = snapshot.dayPlaying ? '❚❚ 暂停昼夜' : '▶ 播放昼夜';
+    document.querySelector('#weather').value = snapshot.weather;
+    document.querySelector('#intensity').value = Math.round(snapshot.weatherIntensity * 100);
+    document.querySelector('#intensityText').textContent = Math.round(snapshot.weatherIntensity * 100) + '%';
+    document.querySelector('#light').value = Math.round(snapshot.lightIntensity * 100);
+    document.querySelector('#lightText').textContent = Math.round(snapshot.lightIntensity * 100) + '%';
+    document.querySelector('main').classList.toggle('night', snapshot.timeProgress < 0.25 || snapshot.timeProgress > 0.75);
+  };
+  scene.onHudUpdate = syncUI;
+  try {
+    scene.attach(new PreviewCanvas(canvas), canvas.clientWidth, canvas.clientHeight);
+    scene.start();
+    syncUI(scene.getSnapshot());
+    controls.forEach(control => { control.disabled = false; });
+    document.querySelector('#result').textContent = 'WebGL 场景已就绪';
+  } catch (error) { document.querySelector('#result').textContent = error.message; console.error(error); }
+  slider.addEventListener('input', () => scene.setSeasonProgress(Number(slider.value) / 1000));
+  play.addEventListener('click', () => scene.setAutoPlay(!scene.autoPlaying));
+  species.addEventListener('change', () => {
+    try { scene.setTreePreset(species.value); }
+    catch (error) { syncUI(scene.getSnapshot()); document.querySelector('#result').textContent = '树种切换失败，请重新选择'; console.error(error); }
+  });
+  document.querySelector('#growth').addEventListener('input', event => scene.setGrowthProgress(Number(event.target.value) / 1000));
+  document.querySelector('#growthPlay').addEventListener('click', () => scene.setGrowthPlay(!scene.getSnapshot().growthPlaying));
+  document.querySelector('#time').addEventListener('input', event => scene.setTimeProgress(Number(event.target.value) / 1440));
+  document.querySelector('#dayPlay').addEventListener('click', () => scene.setDayPlay(!scene.getSnapshot().dayPlaying));
+  document.querySelector('#weather').addEventListener('change', event => scene.setWeather(event.target.value));
+  document.querySelector('#intensity').addEventListener('input', event => scene.setWeatherIntensity(Number(event.target.value) / 100));
+  document.querySelector('#light').addEventListener('input', event => scene.setLightIntensity(Number(event.target.value) / 100));
+  const pointers = new Map();
+  canvas.addEventListener('pointerdown', event => { pointers.set(event.pointerId, { x: event.clientX, y: event.clientY }); canvas.setPointerCapture(event.pointerId); });
+  canvas.addEventListener('pointermove', event => {
+    const previous = pointers.get(event.pointerId);
+    if (!previous) return;
+    if (pointers.size === 1) scene.rotateView(event.clientX - previous.x, event.clientY - previous.y);
+    else {
+      const other = [...pointers].find(([id]) => id !== event.pointerId)[1];
+      const before = Math.hypot(previous.x - other.x, previous.y - other.y);
+      if (before > 0) scene.zoomView(Math.hypot(event.clientX - other.x, event.clientY - other.y) / before);
+    }
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  });
+  for (const type of ['pointerup', 'pointercancel']) canvas.addEventListener(type, event => pointers.delete(event.pointerId));
+  canvas.addEventListener('wheel', event => { event.preventDefault(); scene.zoomView(Math.exp(-event.deltaY * 0.001)); }, { passive: false });
+  new ResizeObserver(() => scene.resize(canvas.clientWidth, canvas.clientHeight)).observe(document.querySelector('.stage'));
+  document.addEventListener('visibilitychange', () => { if (document.hidden) scene.stop(); else scene.start(); });
+  window.addEventListener('pagehide', () => scene.destroy());
+</script>
+</html>

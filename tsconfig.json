@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2018",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "lib": ["ES2018"],
+    "strict": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "forceConsistentCasingInFileNames": true,
+    "removeComments": false,
+    "sourceMap": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "noEmit": true,
+    "typeRoots": ["./typings"],
+    "baseUrl": ".",
+    "paths": {
+      "@tencent-ai/workbuddy-cloud-sdk/miniprogram": [
+        "miniprogram/node_modules/@tencent-ai/workbuddy-cloud-sdk/lib/miniprogram.d.ts"
+      ]
+    }
+  },
+  "include": ["miniprogram/**/*.ts", "typings/**/*.d.ts"],
+  "exclude": ["node_modules", "miniprogram/miniprogram_npm"]
+}

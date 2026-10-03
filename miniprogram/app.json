@@ -1,0 +1,15 @@
+{
+  "pages": ["pages/season-tree/index"],
+  "window": {
+    "navigationStyle": "custom",
+    "navigationBarTitleText": "四时木",
+    "navigationBarBackgroundColor": "#F7F3EC",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#F7F3EC",
+    "backgroundTextStyle": "dark",
+    "enablePullDownRefresh": false
+  },
+  "sitemapLocation": "sitemap.json",
+  "lazyCodeLoading": "requiredComponents",
+  "style": "v2"
+}

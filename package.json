@@ -1,0 +1,20 @@
+{
+  "name": "four-seasons-tree",
+  "version": "1.0.0",
+  "private": true,
+  "description": "四时木（Four Seasons Tree）— 微信小程序 Demo：WebGL / Three.js 渲染一棵随四季连续变化的三维树",
+  "scripts": {
+    "type-check": "tsc --noEmit",
+    "build": "node scripts/copy-three.cjs && tsc --noEmit false",
+    "test": "npm run build && node --test tests/*.test.cjs",
+    "preview": "npm run build && node scripts/preview.cjs"
+  },
+  "devDependencies": {
+    "miniprogram-api-typings": "^5.2.3",
+    "three": "0.108.0",
+    "typescript": "^5.4.5"
+  },
+  "dependencies": {
+    "threejs-miniprogram": "0.0.8"
+  }
+}

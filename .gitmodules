@@ -1,0 +1,3 @@
+[submodule ".agent-spec"]
+	path = .agent-spec
+	url = https://github.com/imhuis/Hex-Kit.git

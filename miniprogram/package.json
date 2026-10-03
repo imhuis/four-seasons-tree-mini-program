@@ -1,0 +1,9 @@
+{
+  "name": "four-seasons-tree-miniprogram",
+  "version": "1.0.0",
+  "private": true,
+  "description": "四时木小程序运行时依赖（微信开发者工具从此目录构建 npm 生成 miniprogram_npm）",
+  "dependencies": {
+    "@tencent-ai/workbuddy-cloud-sdk": "dev"
+  }
+}

@@ -1,0 +1,91 @@
+<!--
+  四时木 · 页面结构
+
+  设计意图：画布与四季时间轴常驻，生长和环境设置折叠展开。
+  所有动画都在 Canvas 内部完成，WXML 不参与逐帧渲染，
+  因此这里的节点数量被刻意压到最少。
+-->
+<view class="page {{isNight ? 'night' : ''}}" style="padding-top: {{safeTop}}px;">
+  <!-- 舞台：画布铺满，左上角浮一层季节文案 -->
+  <view class="stage">
+    <canvas
+      wx:if="{{canvasMounted}}"
+      id="seasonCanvas"
+      class="scene-canvas"
+      type="webgl"
+      disable-scroll="{{true}}"
+      bindtouchstart="onCanvasTouchStart"
+      catchtouchmove="onCanvasTouchMove"
+      bindtouchend="onCanvasTouchEnd"
+      bindtouchcancel="onCanvasTouchEnd"
+    ></canvas>
+
+    <view class="caption {{captionFading ? 'is-fading' : ''}}">
+      <text class="caption-main">{{seasonTitle}}</text>
+      <text class="caption-slogan">{{seasonSlogan}}</text>
+    </view>
+    <view wx:if="{{renderState === 'loading'}}" class="scene-status">
+      <text>正在唤醒四时木…</text>
+    </view>
+    <view wx:if="{{renderState === 'error'}}" class="scene-status">
+      <text>暂时无法打开三维场景</text>
+      <text class="scene-status-detail">请重试，或更新微信后再打开</text>
+      <button class="scene-retry" bindtap="onRetryScene">重试</button>
+    </view>
+    <text wx:if="{{renderState === 'ready'}}" class="scene-hint">拖动旋转 · 双指缩放</text>
+  </view>
+
+  <!-- 时间轴 -->
+  <view class="panel">
+    <view class="preset-row">
+      <picker range="{{presetNames}}" value="{{presetIndex}}" bindchange="onPresetChange" disabled="{{renderState !== 'ready'}}">
+        <view class="preset-picker">{{presetLabel}} <text class="picker-arrow">⌄</text></view>
+      </picker>
+      <view class="settings-toggle" bindtap="onToggleControls">生长与环境 {{controlsOpen ? '收起 −' : '展开 +'}}</view>
+    </view>
+    <view class="ticks">
+      <text class="tick" style="left: 0%">春</text>
+      <text class="tick" style="left: 25%">夏</text>
+      <text class="tick" style="left: 50%">秋</text>
+      <text class="tick" style="left: 75%">冬</text>
+    </view>
+
+    <slider
+      class="seasons"
+      min="0"
+      max="1000"
+      step="1"
+      value="{{sliderValue}}"
+      block-size="18"
+      block-color="#FFFFFF"
+      activeColor="#5C7A56"
+      backgroundColor="#E4DED2"
+      bindchanging="onSliderChanging"
+      bindchange="onSliderChanging"
+    />
+
+    <view class="hud">
+      <text class="hud-phase">{{phaseName}}</text>
+      <view class="hud-play" bindtap="onTogglePlay" hover-class="hud-play--hover">
+        <text class="hud-play-icon">{{playing ? '❚❚' : '▶'}}</text>
+        <text class="hud-play-text">{{playing ? '暂停' : '自动播放'}}</text>
+      </view>
+    </view>
+
+    <text class="hud-cloud">{{cloudStatusText}}</text>
+    <scroll-view wx:if="{{controlsOpen}}" class="settings" scroll-y="{{true}}">
+      <text class="tree-description">{{treeDescription}}</text>
+      <view class="control-label"><text>生长 · {{growthStage}}</text><view class="small-play" bindtap="onToggleGrowth">{{growthPlaying ? '暂停生长' : '播放生长'}}</view></view>
+      <slider min="0" max="1000" value="{{growthValue}}" block-size="14" activeColor="#5C7A56" bindchanging="onGrowthChanging" bindchange="onGrowthChanging" />
+      <view class="control-ticks"><text>种子</text><text>萌芽</text><text>幼树</text><text>成树</text><text>老树</text></view>
+      <view class="control-label"><text>昼夜 · {{timeText}}</text><view class="small-play" bindtap="onToggleDay">{{dayPlaying ? '暂停昼夜' : '播放昼夜'}}</view></view>
+      <slider min="0" max="1440" value="{{timeValue}}" block-size="14" activeColor="#5C7A56" bindchanging="onTimeChanging" bindchange="onTimeChanging" />
+      <view class="control-ticks"><text>午夜</text><text>日出</text><text>正午</text><text>日落</text><text>午夜</text></view>
+      <view class="control-label"><text>天气</text><picker range="{{weatherLabels}}" value="{{weatherIndex}}" bindchange="onWeatherChange"><view class="weather-picker">{{weatherLabels[weatherIndex]}} ⌄</view></picker></view>
+      <view class="control-label"><text>雨雪强度</text><text>{{weatherValue}}%</text></view>
+      <slider min="0" max="100" value="{{weatherValue}}" block-size="14" activeColor="#5C7A56" bindchanging="onWeatherIntensity" bindchange="onWeatherIntensity" />
+      <view class="control-label"><text>光照强度</text><text>{{lightValue}}%</text></view>
+      <slider min="0" max="150" value="{{lightValue}}" block-size="14" activeColor="#5C7A56" bindchanging="onLightChanging" bindchange="onLightChanging" />
+    </scroll-view>
+  </view>
+</view>

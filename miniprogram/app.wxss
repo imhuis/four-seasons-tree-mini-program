@@ -1,0 +1,23 @@
+/* 全局样式：极简、治愈、自然 */
+
+page {
+  --color-ink: #2f3a33;
+  --color-ink-soft: #6d7a70;
+  --color-ink-faint: #9aa79c;
+  --color-accent: #5c7a56;
+  --color-track: #e4ded2;
+  --color-surface: #f7f3ec;
+
+  height: 100%;
+  background-color: var(--color-surface);
+  color: var(--color-ink);
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+view,
+text,
+canvas,
+slider {
+  box-sizing: border-box;
+}

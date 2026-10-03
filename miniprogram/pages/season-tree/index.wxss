@@ -1,0 +1,182 @@
+/* 四时木 · 页面样式
+ *
+ * 风格约束：极简、治愈、自然，不使用卡片、阴影堆叠等重 UI 元素。
+ * 所有尺寸用 rpx，底部留出安全区。
+ */
+
+.page {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background-color: var(--color-surface);
+  overflow: hidden;
+}
+
+/* ---------------- 舞台 ---------------- */
+
+.stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.scene-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.scene-hint {
+  position: absolute;
+  bottom: 20rpx;
+  left: 0;
+  width: 100%;
+  text-align: center;
+  font-size: 20rpx;
+  letter-spacing: 2rpx;
+  color: var(--color-ink-soft);
+  pointer-events: none;
+}
+
+.scene-status {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  color: var(--color-ink-soft);
+  font-size: 28rpx;
+  background: var(--color-surface);
+}
+
+.scene-status-detail { margin-top: 16rpx; font-size: 24rpx; }
+.scene-retry { margin-top: 28rpx; font-size: 24rpx; color: var(--color-accent); }
+
+.caption {
+  position: absolute;
+  top: 24rpx;
+  left: 48rpx;
+  display: flex;
+  flex-direction: column;
+  opacity: 1;
+  pointer-events: none;
+  /* 季节切换时做一次极短的交叠淡出，避免文字硬切 */
+  transition: opacity 140ms ease-out;
+}
+
+.caption.is-fading {
+  opacity: 0;
+}
+
+.caption-main {
+  font-size: 56rpx;
+  font-weight: 300;
+  letter-spacing: 8rpx;
+  color: var(--color-ink);
+  line-height: 1.2;
+}
+
+.caption-slogan {
+  margin-top: 6rpx;
+  font-size: 24rpx;
+  font-weight: 300;
+  letter-spacing: 4rpx;
+  color: var(--color-ink-soft);
+}
+
+/* ---------------- 时间轴 ---------------- */
+
+.panel {
+  flex: 0 0 auto;
+  padding: 8rpx 48rpx 0;
+  padding-bottom: calc(24rpx + constant(safe-area-inset-bottom));
+  padding-bottom: calc(24rpx + env(safe-area-inset-bottom));
+  background-color: var(--color-surface);
+}
+
+.ticks {
+  position: relative;
+  height: 34rpx;
+}
+
+.tick {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  font-size: 22rpx;
+  font-weight: 300;
+  letter-spacing: 2rpx;
+  color: var(--color-ink-faint);
+}
+
+.seasons {
+  /* 抵消 slider 自带的两侧留白，让刻度与轨道对齐 */
+  margin: 0 -18rpx;
+}
+
+.hud {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 18rpx;
+  height: 56rpx;
+}
+
+.hud-phase {
+  font-size: 26rpx;
+  font-weight: 300;
+  letter-spacing: 3rpx;
+  color: var(--color-ink-soft);
+}
+
+.hud-play {
+  display: flex;
+  align-items: center;
+  padding: 8rpx 22rpx;
+  border: 1rpx solid var(--color-track);
+  border-radius: 999rpx;
+  transition: opacity 120ms ease-out;
+}
+
+.hud-play--hover {
+  opacity: 0.5;
+}
+
+.hud-play-icon {
+  font-size: 20rpx;
+  color: var(--color-accent);
+  margin-right: 10rpx;
+}
+
+.hud-play-text {
+  font-size: 22rpx;
+  font-weight: 300;
+  letter-spacing: 2rpx;
+  color: var(--color-accent);
+}
+
+.hud-cloud {
+  display: block;
+  margin-top: 14rpx;
+  text-align: center;
+  font-size: 20rpx;
+  font-weight: 300;
+  letter-spacing: 2rpx;
+  color: var(--color-ink-faint);
+  transition: opacity 200ms ease-out;
+}
+
+.preset-row { display: flex; align-items: center; justify-content: space-between; margin: 8rpx 0 24rpx; }
+.preset-picker { font-size: 30rpx; font-weight: 500; color: var(--color-ink); padding: 6rpx 0; }
+.picker-arrow { padding-left: 14rpx; color: var(--color-accent); }
+.settings-toggle { font-size: 22rpx; padding: 12rpx 0 12rpx 16rpx; color: var(--color-accent); }
+.settings { height: 30vh; border-top: 1rpx solid var(--color-track); margin-top: 18rpx; }
+.tree-description { display: block; color: var(--color-ink-soft); font-size: 22rpx; padding: 22rpx 0 4rpx; }
+.control-label { display: flex; justify-content: space-between; align-items: center; font-size: 24rpx; color: var(--color-ink-soft); margin-top: 22rpx; min-height: 44rpx; }
+.control-ticks { display: flex; justify-content: space-between; font-size: 20rpx; color: var(--color-ink-faint); }
+.small-play, .weather-picker { border: 1rpx solid var(--color-track); border-radius: 30rpx; padding: 8rpx 20rpx; color: var(--color-accent); font-size: 22rpx; }
+.settings slider { margin: 10rpx -18rpx; }
+.night .caption-main { color: #e4e6ef; }
+.night .caption-slogan, .night .scene-hint { color: #c1c9dc; }
